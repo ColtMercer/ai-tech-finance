@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import http.server
 import json
+import os
 import socketserver
 import threading
 import urllib.parse
@@ -43,14 +46,28 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
         return
 
 
+def _generate_pkce() -> tuple[str, str]:
+    """Generate PKCE code_verifier and code_challenge."""
+    code_verifier = base64.urlsafe_b64encode(os.urandom(32)).rstrip(b"=").decode("ascii")
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return code_verifier, code_challenge
+
+# Module-level storage for PKCE verifier (needed across auth URL generation and token exchange)
+_pkce_verifier: str = ""
+
 def build_auth_url(state: str, scopes: list[str]) -> str:
+    global _pkce_verifier
     config = get_config()
+    _pkce_verifier, code_challenge = _generate_pkce()
     params = {
         "client_key": config.tiktok_client_key,
         "redirect_uri": config.tiktok_redirect_uri,
         "scope": ",".join(scopes),
         "state": state,
         "response_type": "code",
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
     }
     return f"{AUTH_BASE_URL}?{urllib.parse.urlencode(params)}"
 
@@ -65,6 +82,7 @@ def exchange_code_for_token(code: str) -> OAuthToken:
         "code": code,
         "grant_type": "authorization_code",
         "redirect_uri": config.tiktok_redirect_uri,
+        "code_verifier": _pkce_verifier,
     }
 
     response = httpx.post(TOKEN_URL, data=data, timeout=30)
