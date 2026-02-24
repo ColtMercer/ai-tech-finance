@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./output:/app/output
+    networks:
+      - opus_infra
+
+networks:
+  opus_infra:
+    external: true
