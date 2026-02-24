@@ -6,7 +6,7 @@ from functools import lru_cache
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 @dataclass(frozen=True)

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import AudioFileClip, CompositeVideoClip, ImageClip
+from moviepy import AudioFileClip, CompositeVideoClip, ImageClip, vfx
 
 from src.config import get_logger
 from src.video.captions import build_captions
@@ -33,7 +33,7 @@ def _gradient_background() -> Image.Image:
     bottom = np.array([28, 34, 51], dtype=float)
     gradient = np.linspace(0, 1, HEIGHT)[:, None]
     colors = (top + (bottom - top) * gradient).astype(np.uint8)
-    image = np.repeat(colors, WIDTH, axis=1)
+    image = np.tile(colors[:, np.newaxis, :], (1, WIDTH, 1))
     noise = np.random.normal(0, 6, image.shape).astype(np.int16)
     image = np.clip(image.astype(np.int16) + noise, 0, 255).astype(np.uint8)
     return Image.fromarray(image, mode="RGB")
@@ -48,8 +48,8 @@ def _render_text(text: str, font_path: Path | None, font_size: int, stroke: int 
     dummy = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(dummy)
     text_bbox = draw.multiline_textbbox((0, 0), text, font=font, align="center")
-    text_width = text_bbox[2] - text_bbox[0]
-    text_height = text_bbox[3] - text_bbox[1]
+    text_width = int(text_bbox[2] - text_bbox[0])
+    text_height = int(text_bbox[3] - text_bbox[1])
     padding = 20
     canvas = Image.new("RGBA", (text_width + padding * 2, text_height + padding * 2), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
@@ -84,7 +84,7 @@ def produce_video(script: dict, audio_path: Path, output_path: Path, assets_dir:
     duration = audio_clip.duration
 
     background = _gradient_background()
-    bg_clip = ImageClip(np.array(background)).set_duration(duration)
+    bg_clip = ImageClip(np.array(background)).with_duration(duration)
 
     font_path = _find_font(assets_dir / "fonts")
 
@@ -93,10 +93,10 @@ def produce_video(script: dict, audio_path: Path, output_path: Path, assets_dir:
         img = _render_text(word.upper(), font_path, font_size=96)
         clip = (
             ImageClip(np.array(img))
-            .set_start(start)
-            .set_end(end)
-            .set_pos(("center", "center"))
-            .fadein(0.15)
+            .with_start(start)
+            .with_end(end)
+            .with_position(("center", "center"))
+            .with_effects([vfx.CrossFadeIn(0.15)])
         )
         word_clips.append(clip)
 
@@ -106,15 +106,15 @@ def produce_video(script: dict, audio_path: Path, output_path: Path, assets_dir:
         img = _render_text(caption.text, font_path, font_size=54, stroke=3)
         clip = (
             ImageClip(np.array(img))
-            .set_start(caption.start)
-            .set_end(caption.end)
-            .set_pos(("center", HEIGHT - 320))
-            .fadein(0.1)
+            .with_start(caption.start)
+            .with_end(caption.end)
+            .with_position(("center", HEIGHT - 320))
+            .with_effects([vfx.CrossFadeIn(0.1)])
         )
         caption_clips.append(clip)
 
     composite = CompositeVideoClip([bg_clip, *word_clips, *caption_clips], size=(WIDTH, HEIGHT))
-    composite = composite.set_audio(audio_clip)
+    composite = composite.with_audio(audio_clip)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     composite.write_videofile(
