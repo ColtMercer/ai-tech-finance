@@ -5,6 +5,14 @@ services:
       - .env
     volumes:
       - ./output:/app/output
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('host.docker.internal', 27017), 5); s.close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
     networks:
       - opus_infra
 
